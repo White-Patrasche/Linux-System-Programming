@@ -7,24 +7,22 @@
 #include <unistd.h>
 #include <time.h>
 #include <string.h>
-#define INPUT_SIZE 0xffff
+#define INPUT_SIZE 4096
 void find();
 void exit();
 void help();
 
-void Print_time(time_t TIME) {
-	struct tm *t;
-	//t = localtime(TIME);
-	//printf("%d/%d/\n",1900+now.tm_year+1900, now.tm_mon+1);
-}
-
 void find_fuc(char* INPUT) {
 	struct stat* buf;
 	printf("Index Size Mode      Blocks Links UID  GID  Access    Change         Modify         Path\n");
-	stat("/a", buf);
-	printf("%ld",buf->st_atime);
-	//Print_time(buf->st_atime);
-	printf("UID: %d, GID : %d\n",buf->st_mode, buf->st_uid);
+	stat("/Linux-System-Programming/struct1/a", buf);
+	printf("I-node : %ld\n",(long) buf->st_ino);
+	printf("size : %lld\n",(long long) buf->st_size);
+	printf("Block : %lld\n",(long long) buf->st_blocks);
+	printf("File Size : %lld\n", (long long) buf->st_size);
+	printf("%s\n",ctime(&buf->st_atime));
+//	printf("%s\n",ctime(&buf->st_ctime));
+//	printf("%s\n",ctime(&buf->st_mtime));
 	return;
 }
 
@@ -65,8 +63,8 @@ int main() {
 				SEC--;
 				USEC = -USEC;
 			}
-			printf("Ptompt End\n");
-			printf("runtime: %ld:%ld(sec:usec)\n", SEC, USEC);
+			printf("Prompt End\n");
+			printf("Runtime: %ld:%ld(sec:usec)\n", SEC, USEC);
 			return 0;
 		}
 		else if(strcmp(input, "\n") == 0) continue; //just '\n'
