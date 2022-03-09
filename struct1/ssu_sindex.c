@@ -8,26 +8,64 @@
 #include <time.h>
 #include <string.h>
 #define INPUT_SIZE 4096
-void find();
 void exit();
 void help();
+int INDEX = 0;
+void find_dir(char* FILENAME, char* PATH) {
+	char RealPath[INPUT_SIZE];
+	printf("%s\n",PATH);
+	if(realpath(PATH, RealPath) == NULL) {
+		printf("RealPath translating error\n");
+		return;
+	}
+	int cnt;
+	struct dirent ** DIR;
+	printf("Index Size Mode      Blocks Links UID  GID  Access    Change         Modify         Path\n");
+	cnt = scandir(RealPath, &DIR, NULL, alphasort);
+	for(int i=0; i<cnt; i++) {
+		printf("%s\n",DIR[i]->d_name);
+	}
+	/*
+	while(1) { //translate to realpath	
+		realpath(
+	}
+	*/
+}
 
 void find_fuc(char* INPUT) {
-	struct stat* buf;
+	struct stat buf;
 	printf("Index Size Mode      Blocks Links UID  GID  Access    Change         Modify         Path\n");
-	stat("/Linux-System-Programming/struct1/a", buf);
-	printf("I-node : %ld\n",(long) buf->st_ino);
-	printf("size : %lld\n",(long long) buf->st_size);
-	printf("Block : %lld\n",(long long) buf->st_blocks);
-	printf("File Size : %lld\n", (long long) buf->st_size);
-	printf("%s\n",ctime(&buf->st_atime));
-//	printf("%s\n",ctime(&buf->st_ctime));
-//	printf("%s\n",ctime(&buf->st_mtime));
+	stat("b", &buf);
+	int INDEX = 0;
+	printf("%-6d",INDEX);
+	printf("%-5lld",(long long)buf.st_size); //file size
+	printf("%lo",(unsigned long)buf.st_mode);//Mode
+	printf("%-7ld",(long)buf.st_blksize); //blocks
+	printf("%-6ld",(long)buf.st_nlink); //links
+	printf("%-5ld",(long)buf.st_uid);
+	printf("%-5ld",(long)buf.st_gid);
+	//access time
+	printf("\n");
+	int count;
+	struct dirent **DIR;
+	char NEWPATH[1024];
+	if((count = scandir(".", &DIR, NULL, alphasort)) == -1) return;
+
+	//for(int i=0; i<count; i++) printf("%s\n",DIR[i]->d_name);
+
+	for(int i=0; i<count; i++) {
+		realpath(DIR[i]->d_name, NEWPATH);
+		printf("%s\n",NEWPATH);
+	}
+
+
+	for(int i=0; i<count; i++) free(DIR[i]);
+	free(DIR);
 	return;
 }
 
 void inputClear(char* INPUT) {
-	for(int i=0; i<100; i++) INPUT = 0;
+	for(int i=0; i<INPUT_SIZE; i++) INPUT = 0;
 }
 void help() {
 	printf("Usage:\n");
@@ -45,16 +83,25 @@ void help() {
 
 int main() {
 	char input[INPUT_SIZE];
-	memset(input, 0, sizeof(input));
+
 	struct timeval start_time; //time check
 	gettimeofday(&start_time, NULL);
+
 	while(1) {
+		memset(input, 0, sizeof(input)); //input memory reset
 		printf("20193010> ");
-		fgets(input,INPUT_SIZE,stdin); //input includes '\n'
-		if(strcmp(input, "find\n") == 0) { //input == find
-			find_fuc(input);
+		fgets(input,INPUT_SIZE,stdin); //input includes '\n'i
+		char *ptr, *ptr1, *ptr2;
+		ptr = strtok(input, " ");
+		if(strcmp(ptr, "find") == 0) {
+			ptr = strtok(NULL, " \n");
+			ptr1 = ptr;
+			ptr = strtok(NULL, " \n");
+			ptr2 = ptr;
+			find_dir(ptr1, ptr2);
 		}
-		else if(strcmp(input, "exit\n") == 0) { //input == exit
+	
+		else if(strcmp(ptr, "exit\n") == 0) { //input == exit
 			struct timeval end_time;
 			gettimeofday(&end_time, NULL);
 			long SEC = end_time.tv_sec - start_time.tv_sec;
@@ -67,7 +114,7 @@ int main() {
 			printf("Runtime: %ld:%ld(sec:usec)\n", SEC, USEC);
 			return 0;
 		}
-		else if(strcmp(input, "\n") == 0) continue; //just '\n'
+		else if(strcmp(ptr, "\n") == 0) continue; //just '\n'
 		else {
 			help();
 			continue;
