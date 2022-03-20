@@ -20,6 +20,7 @@ typedef struct File_data {
 	struct File_data* prev;
 	struct File_data* next;
 	int isDir; // 1:dir, 2:file, 3:begin or end
+	long size;
 }file_data;
 
 typedef struct List_manage {
@@ -34,9 +35,10 @@ void inputClear(char*);
 void error(int);
 list_manage* find_func(char*, char*);
 list_manage* makeList();
-void find_dir();
-void find_file();
-void push(list_manage*, char*, int, int);
+//list_manage* find_dir();
+//list_manage* find_file();
+//int printData(list_manage*);
+//void indexSearch(list_manage*);
 
 //functions
 list_manage* makeList() {
@@ -52,6 +54,7 @@ list_manage* makeList() {
 	start->level = 0;
 	end->level = MAX;
 	start->isDir = end->isDir = 3;
+	start->size = end->size = 0;
 
 	manager->begin = start;
 	manager->end = end;
@@ -72,7 +75,7 @@ char* front(list_manage* manager) {
 	return cur->path;
 }
 
-void push(list_manage* manage, char* path, int level, int isDir) {
+void push(list_manage* manage, char* path, int level, int isDir, int size) {
 	file_data* cur = manage->begin;
 	while(1) {
 		if(cur->level > level) break;
@@ -86,6 +89,7 @@ void push(list_manage* manage, char* path, int level, int isDir) {
 	newNode->isDir = isDir;
 	cur->prev->next = newNode;
 	cur->prev = newNode;
+	newNode->size = size;
 	manage->size++;
 }
 
@@ -100,6 +104,20 @@ void clear(list_manage* manager) {
 	manager->size = 0;
 }
 
+void endList(list_manage* manager) {
+	for(int i=0; i<manager->size; i++) {
+		file_data* cur = manager->begin->next;
+		manager->begin->next = cur->next;
+		free(cur);
+	}
+	free(manager->begin);
+	free(manager->end);
+	manager->size = 0;
+	manager->begin = NULL;
+	manager->end = NULL;
+	free(manager);
+}
+
 void error(int errorNum) {
 	switch(errorNum) {
 		case 1 :
@@ -111,6 +129,14 @@ void error(int errorNum) {
 	}
 }
 
+/*
+list_manage* find_dir(list_manage* manager) {}
+list_manage* find_file(list_manage* manager) {}
+int printData(list_manage* manager) {}
+void indexSearch(list_manage* manager) {} 
+*/
+
+
 list_manage* find_func(char* fname, char* path) {
 	list_manage* manager = makeList();
 	//manager is linked list that queue that sorted by level of directory
@@ -119,13 +145,13 @@ list_manage* find_func(char* fname, char* path) {
 	if(realpath(path, RealPath) == NULL) {
 		return manager;
 	}
-
 	struct dirent **namelist;
 	int cnt, idx;
 	int level = 0, isDir = 0, flag = 0;
+	long size = 0;
 	char ans[MAX];
 	struct stat st;
-	push(manager, RealPath, level, 2);
+	push(manager, RealPath, level, 2, 0);
 	while(1) {
 		flag = 0;
 		level = manager->begin->next->level;
@@ -141,10 +167,19 @@ list_manage* find_func(char* fname, char* path) {
 			if(!strcmp(namelist[idx]->d_name, "..")) continue;
 			char newPath[MAX];
 			strcpy(newPath, "");
-			strcat(newPath, RealPath);
-			strcat(newPath, "/");
-			strcat(newPath, namelist[idx]->d_name);
+			if(!strcmp(RealPath, "/")) { //it start finding from root dir
+				strcat(newPath, "/");
+				strcat(newPath, namelist[idx]->d_name);
+			}
+			else { //it's not root directory
+				strcat(newPath, RealPath);
+				strcat(newPath, "/");
+				strcat(newPath, namelist[idx]->d_name);
+			}
 			printf("%s\n",newPath);
+			if(!strcmp(newPath, "/proc") || !strcmp(newPath, "/run") ||
+					!strcmp(newPath, "/usr"))
+				continue;
 			stat(newPath, &st);
 			if(!strcmp(namelist[idx]->d_name, fname)) {
 				flag = 1;
@@ -154,55 +189,45 @@ list_manage* find_func(char* fname, char* path) {
 				break;
 			}
 			if((st.st_mode & S_IFMT) == S_IFDIR) {
-				push(manager, newPath, level+1, 2);
+				push(manager, newPath, level+1, 2, 0);
 			}
 			free(namelist[idx]);
 		}
-		if(flag) break;
+		if(flag) break; //not zero
 		pop(manager);
 		free(namelist);
 	}
 	clear(manager);
-	if(flag) push(manager, ans, level, isDir);
+	if(flag) { //find it?
+		if(isDir == 2) { //it's dir
+			int cnt = scandir(ans, &namelist, NULL, alphasort);
+			for(int i=0; i<cnt; i++) {
+				char tempPath[MAX];
+				strcpy(tempPath, "");
+				strcat(tempPath, ans);
+				strcat(tempPath, "/");
+				strcat(tempPath, namelist[i]->d_name);
+				printf("%s is newPath\n", tempPath);
+				stat(tempPath, &st);
+				if((st.st_mode & S_IFREG) == S_IFREG) {
+					size += st.st_size;
+				}
+			}
+			free(namelist);
+		}
+		else if(isDir == 1) { //it's file
+			stat(ans, &st);
+			size = st.st_size;
+		}
+		push(manager, ans, level, isDir, size);
+	}
 	return manager;	
 }
 
-/*
-void find_func(char* FILENAME, char* PATH) {
-	char RealPath[INPUT_SIZE];
-	if(realpath(PATH, RealPath) == NULL) {
-		//printf("It's File not directory\n");
-		//printf("\n");
-		return;
-	}
-	int cnt;
-	struct dirent ** DIR;
 //	printf("Index Size Mode      Blocks Links UID  GID  Access    Change         Modify         Path\n");
-	cnt = scandir(RealPath, &DIR, NULL, alphasort); //find every path from	"PATH"
-	char* ptr;
-	for(int i=0; i<cnt; i++) {
-		if(strstr(DIR[i]->d_name, ".") != NULL) continue;
-		if(strstr(DIR[i]->d_name,  "..") != NULL) continue; //find ., .. ->		except
-		//if((ptr = strstr(DIR[i]->d_name, FILENAME)) != NULL) {
-			char newPath[INPUT_SIZE];
-			char tempPath[INPUT_SIZE];
-			strcpy(newPath, RealPath);
-			strcat(newPath, DIR[i]->d_name);
-			if(realpath(newPath, tempPath) == NULL) continue;
-			printf("PATH : %s\n",newPath); //find just directories
-			find_dir(FILENAME, newPath);
-		//}
-		
-		//printf("%s\n",DIR[i]->d_name);
-	}
-	while(1) { //translate to realpath	
-		realpath(
-	}
-}
-*/
 
 void inputClear(char* INPUT) {
-	for(int i=0; i<MAX; i++) INPUT = 0;
+	for(int i=0; i<MAX; i++) INPUT[i] = 0;
 }
 
 void help() {
@@ -219,7 +244,7 @@ void help() {
 	return;
 }
 
-int main() {
+int main(void) {
 	char input[MAX];
 
 	struct timeval start_time; //time check
@@ -231,7 +256,6 @@ int main() {
 		fgets(input,MAX,stdin); //input includes '\n'
 		inputClear(input);
 		INDEX = 0;
-
 		char *ptr, *ptr1, *ptr2;
 		ptr = strtok(input, " ");
 		if(strcmp(ptr, "find") == 0) {
@@ -248,17 +272,26 @@ int main() {
 				continue;
 			}
 			list_manage* mode = find_func(ptr1, ptr2);
+			//list_manage* actual_list
 			switch(mode->begin->next->isDir) {
 				case 1:
-					printf("find file at %s!\n",mode->begin->next->path);
+					//actual_list = find_dir(mode);
 					break;
 				case 2:
-					printf("find dir at %s!\n",mode->begin->next->path);
+					//actual_list = find_file(mode);
 					break;
 				case 3:
 					printf("can't find dir or file!\n");
-					break;
+					endList(mode);
+					continue;
 			}
+			/*
+			if(printData(actual_list)) { //find extra data
+				indexSearch(actual_list);
+			}
+			endList(actual_list);
+			*/
+			endList(mode);
 		}
 	
 		else if(strcmp(ptr, "exit\n") == 0) { //input == exit
