@@ -30,14 +30,23 @@ typedef struct List_manage {
 }list_manage;
 
 //function declare
+list_manage* makeList();
+void pop(list_manage*);
+char* front(list_manage*);
+void push(list_manage*, char*, int, int, int);
+void clear(list_manage*);
+void error();
 void help();
-void inputClear(char*);
+void inputClear(char*, int);
 void error(int);
 list_manage* find_func(char*, char*);
 list_manage* makeList();
-//list_manage* find_dir();
+list_manage* find_dir();
+void endList(list_manage*);
+long sizeOfDir(char*);
+void flush();
 //list_manage* find_file();
-//int printData(list_manage*);
+int printData(list_manage*);
 //void indexSearch(list_manage*);
 
 //functions
@@ -49,8 +58,8 @@ list_manage* makeList() {
 	start->next = end;
 	end->prev = start;
 
-	inputClear(start->path);
-	inputClear(end->path);
+	inputClear(start->path, MAX);
+	inputClear(end->path, MAX);
 	start->level = 0;
 	end->level = MAX;
 	start->isDir = end->isDir = 3;
@@ -129,13 +138,109 @@ void error(int errorNum) {
 	}
 }
 
+void flush() {
+	while(getchar() != '\n');
+}
+
+list_manage* find_dir(list_manage* manager, char* fname) {
+	char dpath[MAX]; //start scan
+	long dsize = manager->begin->next->size;
+	int level = manager->begin->next->level;
+	strcpy(dpath, manager->begin->next->path);
+	list_manage* onlyDir = makeList(); //to return list
+	list_manage* scan = makeList();
+	push(onlyDir, dpath, level, 2, dsize);
+	//to scan from dpath, delete elements before first /
+	//if i == 0, it's root dir
+	printf("%s\n",dpath);
+	for(int i=strlen(manager->begin->next->path)-1; i>0; i--) { 
+		if(dpath[i] != '/') dpath[i] = '\0';
+		else {
+			dpath[i] = '\0';
+			break;
+		}
+	}
+
+	push(scan, dpath, level, 2, dsize);
+	struct stat st;
+	struct dirent **namelist;
+	long size;
+	int cnt, idx;
+	while(1) {
+		if(scan->size == 0) break;
+		strcpy(dpath, front(scan));
+		level = scan->begin->next->level + 1;
+		pop(scan);
+		for(idx=0; idx<cnt; idx++) {
+			size = 0;
+			if(!strcmp(namelist[idx]->d_name, ".") ||
+					!strcmp(namelist[idx]->d_name, "..")) continue;
+			if(!strcmp(namelist[idx]->d_name, "proc") ||
+					!strcmp(namelist[idx]->d_name, "run")) continue;
+			char newPath[MAX];
+			if(!strcmp(dpath, "/")) { //find from root dir
+				strcpy(newPath, "/");
+				strcat(newPath, namelist[idx]->d_name);
+			}
+			else {
+				strcpy(newPath, dpath);
+				strcat(newPath, "/");
+				strcat(newPath, namelist[idx]->d_name);
+			}
+			stat(newPath, &st);
+			if((st.st_mode & S_IFMT) == S_IFDIR) {
+				if(!strcmp(namelist[idx]->d_name, fname)) {
+					size = sizeOfDir(newPath);
+					if(dsize == size) { //find it!
+						push(onlyDir, newPath, level, 2, size);
+						printf("%s add!\n",newPath);
+					}
+				}
+				push(scan, newPath, level, 2, size);
+			}
+		}
+	}
+	endList(scan);
+	return onlyDir;
+}
 /*
-list_manage* find_dir(list_manage* manager) {}
 list_manage* find_file(list_manage* manager) {}
-int printData(list_manage* manager) {}
+int printData(list_manage* manager) {
+}
 void indexSearch(list_manage* manager) {} 
 */
 
+int printData(list_manage* manager) {
+	file_data* cur = manager->begin->next;
+	struct stat st;
+	for(int i=0; i<manager->size; i++) {
+		stat(cur->path,&st);
+		printf("path : %s, fsize : %ld, mode : %o\n",cur->path, cur->size,
+				st.st_mode);
+		cur = cur->next;
+	}
+	return 0;
+}
+
+long sizeOfDir(char* path) {
+	long size = 0;
+	struct dirent **namelist;
+	struct stat st;
+	int cnt = scandir(path, &namelist, NULL, alphasort);
+	if(cnt < 0) return 0;
+	for(int i=0; i<cnt; i++) {
+		char tempPath[MAX];
+		strcpy(tempPath, path);
+		strcat(tempPath, "/");
+		strcat(tempPath, namelist[i]->d_name);
+		stat(tempPath, &st);
+		if((st.st_mode & S_IFREG) == S_IFREG) {
+			size += st.st_size;
+		}
+	}
+	free(namelist);
+	return size;
+}
 
 list_manage* find_func(char* fname, char* path) {
 	list_manage* manager = makeList();
@@ -165,6 +270,8 @@ list_manage* find_func(char* fname, char* path) {
 		for(idx=0; idx<cnt; idx++) {
 			if(!strcmp(namelist[idx]->d_name, ".")) continue;
 			if(!strcmp(namelist[idx]->d_name, "..")) continue;
+			if(!strcmp(namelist[idx]->d_name, "proc") ||
+					!strcmp(namelist[idx]->d_name, "run")) continue;
 			char newPath[MAX];
 			strcpy(newPath, "");
 			if(!strcmp(RealPath, "/")) { //it start finding from root dir
@@ -176,15 +283,11 @@ list_manage* find_func(char* fname, char* path) {
 				strcat(newPath, "/");
 				strcat(newPath, namelist[idx]->d_name);
 			}
-			printf("%s\n",newPath);
-			if(!strcmp(newPath, "/proc") || !strcmp(newPath, "/run") ||
-					!strcmp(newPath, "/usr"))
-				continue;
 			stat(newPath, &st);
 			if(!strcmp(namelist[idx]->d_name, fname)) {
 				flag = 1;
 				strcpy(ans, newPath);
-				if((st.st_mode & S_IFMT) == S_IFDIR) isDir = 2;
+				if((st.st_mode & S_IFMT) == S_IFDIR) isDir = 2; //DIR
 				else isDir = 1;
 				break;
 			}
@@ -207,7 +310,6 @@ list_manage* find_func(char* fname, char* path) {
 				strcat(tempPath, ans);
 				strcat(tempPath, "/");
 				strcat(tempPath, namelist[i]->d_name);
-				printf("%s is newPath\n", tempPath);
 				stat(tempPath, &st);
 				if((st.st_mode & S_IFREG) == S_IFREG) {
 					size += st.st_size;
@@ -226,8 +328,8 @@ list_manage* find_func(char* fname, char* path) {
 
 //	printf("Index Size Mode      Blocks Links UID  GID  Access    Change         Modify         Path\n");
 
-void inputClear(char* INPUT) {
-	for(int i=0; i<MAX; i++) INPUT[i] = 0;
+void inputClear(char* INPUT, int size) {
+	for(int i=0; i<size; i++) INPUT[i] = '\0';
 }
 
 void help() {
@@ -249,52 +351,56 @@ int main(void) {
 
 	struct timeval start_time; //time check
 	gettimeofday(&start_time, NULL);
-
 	while(1) {
-		memset(input, 0, sizeof(input)); //input memory reset
+		inputClear(input, MAX);
 		printf("20193010> ");
 		fgets(input,MAX,stdin); //input includes '\n'
-		inputClear(input);
+		input[strlen(input)-1] = '\0';
 		INDEX = 0;
-		char *ptr, *ptr1, *ptr2;
+		char *ptr, *fname, *path, *val;
+		if(input[0] == '\0') continue;
 		ptr = strtok(input, " ");
-		if(strcmp(ptr, "find") == 0) {
+		val = ptr;
+		if(!strcmp(val, "find")) {
 			ptr = strtok(NULL, " ");
-			ptr1 = ptr;
-			ptr = strtok(NULL, " \n");
-			ptr2 = ptr;
-			if(strcmp(ptr1, "\n") == 0) {
-				error(0);
+			fname = ptr;
+			ptr = strtok(NULL, " ");
+			path = ptr;
+			printf("%s %s",ptr,path);
+			if(fname == NULL) {
+				error(0); //file name missed
 				continue;
 			}
-			else if(strcmp(ptr2, "\n") == 0) {
-				error(1);
+			else if(path == NULL) {
+				error(1); //path missed
 				continue;
 			}
-			list_manage* mode = find_func(ptr1, ptr2);
-			//list_manage* actual_list
+			
+			list_manage* mode = find_func(fname, path);
+			list_manage* actual_list;
+			printf("%s\n",mode->begin->next->path);
 			switch(mode->begin->next->isDir) {
-				case 1:
-					//actual_list = find_dir(mode);
+				case 2: //when find dir
+					printf("FIND_DIR FUNC\n");
+					actual_list = find_dir(mode, fname);
 					break;
-				case 2:
+				case 1: //when find file
 					//actual_list = find_file(mode);
 					break;
-				case 3:
+				case 3: //can't find file or dir
 					printf("can't find dir or file!\n");
 					endList(mode);
 					continue;
 			}
-			/*
+
 			if(printData(actual_list)) { //find extra data
-				indexSearch(actual_list);
+				//indexSearch(actual_list);
 			}
 			endList(actual_list);
-			*/
 			endList(mode);
 		}
 	
-		else if(strcmp(ptr, "exit\n") == 0) { //input == exit
+		else if(strcmp(ptr, "exit") == 0) { //input == exit
 			struct timeval end_time;
 			gettimeofday(&end_time, NULL);
 			long SEC = end_time.tv_sec - start_time.tv_sec;
@@ -307,7 +413,6 @@ int main(void) {
 			printf("Runtime: %ld:%ld(sec:usec)\n", SEC, USEC);
 			return 0;
 		}
-		else if(strcmp(ptr, "\n") == 0) continue; //just '\n'
 		else {
 			help();
 			continue;
